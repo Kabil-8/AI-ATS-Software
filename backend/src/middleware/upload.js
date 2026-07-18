@@ -18,23 +18,28 @@ const fileFilter = (req, file, cb) => {
   }
 };
 
+// Only initialise S3 storage when the bucket name is available (i.e. env vars loaded)
+const s3Storage = BUCKET_NAME
+  ? multerS3({
+      s3: s3Client,
+      bucket: BUCKET_NAME,
+      contentType: multerS3.AUTO_CONTENT_TYPE,
+      metadata: (req, file, cb) => {
+        cb(null, {
+          uploadedBy: req.user ? req.user._id.toString() : 'anonymous',
+          originalName: file.originalname,
+        });
+      },
+      key: (req, file, cb) => {
+        const ext = path.extname(file.originalname);
+        const key = `resumes/${uuidv4()}${ext}`;
+        cb(null, key);
+      },
+    })
+  : multer.memoryStorage();
+
 const upload = multer({
-  storage: multerS3({
-    s3: s3Client,
-    bucket: BUCKET_NAME,
-    contentType: multerS3.AUTO_CONTENT_TYPE,
-    metadata: (req, file, cb) => {
-      cb(null, {
-        uploadedBy: req.user ? req.user._id.toString() : 'anonymous',
-        originalName: file.originalname,
-      });
-    },
-    key: (req, file, cb) => {
-      const ext = path.extname(file.originalname);
-      const key = `resumes/${uuidv4()}${ext}`;
-      cb(null, key);
-    },
-  }),
+  storage: s3Storage,
   fileFilter,
   limits: { fileSize: 10 * 1024 * 1024 }, // 10MB
 });
