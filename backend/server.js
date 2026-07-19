@@ -9,6 +9,7 @@ const errorHandler = require('./src/middleware/errorHandler');
 
 // Route imports
 const authRoutes = require('./src/routes/auth');
+const userRoutes = require('./src/routes/users');
 const jobRoutes = require('./src/routes/jobs');
 const applicationRoutes = require('./src/routes/applications');
 const aiRoutes = require('./src/routes/ai');
@@ -52,10 +53,11 @@ app.get('/health', (req, res) => {
 });
 
 // API routes
-app.use('/api/auth', authRoutes);
-app.use('/api/jobs', jobRoutes);
+app.use('/api/auth',         authRoutes);
+app.use('/api/users',        userRoutes);
+app.use('/api/jobs',         jobRoutes);
 app.use('/api/applications', applicationRoutes);
-app.use('/api/ai', aiRoutes);
+app.use('/api/ai',           aiRoutes);
 
 // 404 handler
 app.use((req, res) => {

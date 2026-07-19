@@ -3,6 +3,7 @@ const router = express.Router();
 const {
   createApplication, getMyApplications, getJobApplications,
   getApplication, updateStatus, addNote,
+  updateStage, updateRating, updateKanbanOrder, withdrawApplication,
 } = require('../controllers/applicationController');
 const { protect, requireRole } = require('../middleware/auth');
 const { upload, uploadMemory } = require('../middleware/upload');
@@ -15,11 +16,15 @@ const resumeUpload = process.env.AWS_ACCESS_KEY_ID && process.env.AWS_ACCESS_KEY
 // Applicant routes
 router.post('/', protect, requireRole('applicant'), resumeUpload, createApplication);
 router.get('/my', protect, requireRole('applicant'), getMyApplications);
+router.patch('/:id/withdraw', protect, requireRole('applicant'), withdrawApplication);
 
 // Recruiter routes
 router.get('/job/:jobId', protect, requireRole('recruiter'), getJobApplications);
-router.patch('/:id/status', protect, requireRole('recruiter'), updateStatus);
-router.post('/:id/notes', protect, requireRole('recruiter'), addNote);
+router.patch('/:id/status',       protect, requireRole('recruiter'), updateStatus);
+router.patch('/:id/stage',        protect, requireRole('recruiter'), updateStage);
+router.patch('/:id/rating',       protect, requireRole('recruiter'), updateRating);
+router.patch('/:id/kanban-order', protect, requireRole('recruiter'), updateKanbanOrder);
+router.post('/:id/notes',         protect, requireRole('recruiter'), addNote);
 
 // Shared
 router.get('/:id', protect, getApplication);

@@ -1,49 +1,66 @@
-# ── Node ──────────────────────────────────────
+# ===========================
+# Node.js
+# ===========================
 node_modules/
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 .pnpm-debug.log*
 
-# ── Environment files ─────────────────────────
+# ===========================
+# Environment
+# ===========================
 .env
 .env.*
 **/.env
 **/.env.*
 
-# Keep example env files
 !.env.example
 !**/.env.example
 
-# ── Build outputs ─────────────────────────────
-dist/
-build/
-.vite/
-
-# ── Python ────────────────────────────────────
+# ===========================
+# Python
+# ===========================
 __pycache__/
 *.py[cod]
 *.pyo
 venv/
 .venv/
+**/venv/
+**/.venv/
 *.egg-info/
 .pytest_cache/
 
-# ── OS files ──────────────────────────────────
-.DS_Store
-Thumbs.db
-desktop.ini
+# ===========================
+# Build
+# ===========================
+dist/
+build/
+.vite/
 
-# ── IDE files ─────────────────────────────────
+# ===========================
+# Logs
+# ===========================
+logs/
+*.log
+
+# ===========================
+# Uploads
+# ===========================
+uploads/
+tmp/
+
+# ===========================
+# IDE
+# ===========================
 .vscode/
 .idea/
 *.swp
 *.swo
 
-# ── Logs ──────────────────────────────────────
-logs/
-*.log
-
-# ── Uploads (local dev) ───────────────────────
-uploads/
-tmp/
+# ===========================
+# OS
+# ===========================
+.DS_Store
+Thumbs.db
+desktop.ini

@@ -191,3 +191,101 @@ exports.addNote = async (req, res, next) => {
     next(error);
   }
 };
+
+// @PATCH /api/applications/:id/stage — Recruiter: move Kanban stage
+exports.updateStage = async (req, res, next) => {
+  try {
+    const VALID_STAGES = ['new', 'reviewed', 'shortlisted', 'interview_scheduled', 'offer_extended', 'hired', 'rejected'];
+    const { stage } = req.body;
+    if (!VALID_STAGES.includes(stage)) {
+      return res.status(400).json({ success: false, message: 'Invalid stage' });
+    }
+
+    const app = await Application.findByIdAndUpdate(
+      req.params.id,
+      { stage },
+      { new: true, runValidators: true }
+    ).populate('applicant', 'name email avatar').populate('job', 'title');
+
+    if (!app) return res.status(404).json({ success: false, message: 'Application not found' });
+
+    res.json({ success: true, data: app, message: `Stage updated to ${stage}` });
+  } catch (error) {
+    next(error);
+  }
+};
+
+// @PATCH /api/applications/:id/rating — Recruiter: set star rating (1-5)
+exports.updateRating = async (req, res, next) => {
+  try {
+    const { rating } = req.body;
+    if (rating === undefined || rating < 1 || rating > 5) {
+      return res.status(400).json({ success: false, message: 'Rating must be between 1 and 5' });
+    }
+
+    const app = await Application.findByIdAndUpdate(
+      req.params.id,
+      { rating: Number(rating) },
+      { new: true }
+    );
+
+    if (!app) return res.status(404).json({ success: false, message: 'Application not found' });
+
+    res.json({ success: true, data: app, message: `Rating set to ${rating}` });
+  } catch (error) {
+    next(error);
+  }
+};
+
+// @PATCH /api/applications/:id/kanban-order — Recruiter: persist drag-drop order
+exports.updateKanbanOrder = async (req, res, next) => {
+  try {
+    const { kanbanOrder } = req.body;
+    if (kanbanOrder === undefined || typeof kanbanOrder !== 'number') {
+      return res.status(400).json({ success: false, message: 'kanbanOrder must be a number' });
+    }
+
+    const app = await Application.findByIdAndUpdate(
+      req.params.id,
+      { kanbanOrder },
+      { new: true }
+    );
+
+    if (!app) return res.status(404).json({ success: false, message: 'Application not found' });
+
+    res.json({ success: true, data: app });
+  } catch (error) {
+    next(error);
+  }
+};
+
+// @PATCH /api/applications/:id/withdraw — Applicant: self-withdraw application
+exports.withdrawApplication = async (req, res, next) => {
+  try {
+    const { reason } = req.body;
+
+    const app = await Application.findOne({
+      _id: req.params.id,
+      applicant: req.user._id,
+    });
+
+    if (!app) return res.status(404).json({ success: false, message: 'Application not found' });
+
+    if (app.isWithdrawn) {
+      return res.status(409).json({ success: false, message: 'Application already withdrawn' });
+    }
+
+    if (['hired', 'rejected'].includes(app.status)) {
+      return res.status(400).json({ success: false, message: 'Cannot withdraw a finalised application' });
+    }
+
+    app.isWithdrawn = true;
+    app.withdrawReason = reason || '';
+    app.statusHistory.push({ from: app.status, to: 'withdrawn', changedBy: req.user._id, note: reason || 'Applicant withdrew' });
+    await app.save();
+
+    res.json({ success: true, message: 'Application withdrawn successfully', data: app });
+  } catch (error) {
+    next(error);
+  }
+};
