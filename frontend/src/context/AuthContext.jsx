@@ -51,8 +51,26 @@ export const AuthProvider = ({ children }) => {
     return data.user;
   };
 
+  /** Send password reset email — resolves with success message string */
+  const forgotPassword = async (email) => {
+    const { data } = await api.post('/auth/forgot-password', { email });
+    return data.message;
+  };
+
+  /** Consume reset token and set new password */
+  const resetPassword = async (token, password) => {
+    const { data } = await api.post(`/auth/reset-password/${token}`, { password });
+    return data.message;
+  };
+
   return (
-    <AuthContext.Provider value={{ user, loading, login, register, logout, updateProfile, isRecruiter: user?.role === 'recruiter', isApplicant: user?.role === 'applicant' }}>
+    <AuthContext.Provider value={{
+      user, loading,
+      login, register, logout, updateProfile,
+      forgotPassword, resetPassword,
+      isRecruiter: user?.role === 'recruiter',
+      isApplicant: user?.role === 'applicant',
+    }}>
       {children}
     </AuthContext.Provider>
   );
@@ -63,3 +81,4 @@ export const useAuth = () => {
   if (!ctx) throw new Error('useAuth must be used within AuthProvider');
   return ctx;
 };
+

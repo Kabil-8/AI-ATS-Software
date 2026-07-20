@@ -1,7 +1,11 @@
 const express = require('express');
 const { body } = require('express-validator');
 const router = express.Router();
-const { register, login, refresh, getMe, logout, updateProfile, changePassword } = require('../controllers/authController');
+const {
+  register, login, refresh, getMe, logout,
+  updateProfile, changePassword,
+  forgotPassword, resetPassword,
+} = require('../controllers/authController');
 const { protect } = require('../middleware/auth');
 
 const registerValidation = [
@@ -18,5 +22,9 @@ router.post('/logout', protect, logout);
 router.get('/me', protect, getMe);
 router.put('/profile', protect, updateProfile);
 router.put('/password', protect, changePassword);
+
+// Password reset flow (no auth required)
+router.post('/forgot-password', forgotPassword);
+router.post('/reset-password/:token', resetPassword);
 
 module.exports = router;

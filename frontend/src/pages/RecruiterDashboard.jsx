@@ -1,8 +1,8 @@
 import React, { useState } from 'react';
 import { Box, Container, Typography, Grid, Button, Card, CardContent, Table, TableBody, TableCell, TableHead, TableRow, IconButton, Chip, Menu, MenuItem, Skeleton, useTheme, alpha, Divider } from '@mui/material';
-import { Add, MoreVert, Edit, Archive, Visibility, BarChart, People, WorkOutline, TrendingUp, AccessTime } from '@mui/icons-material';
+import { Add, MoreVert, Edit, Archive, Visibility, BarChart, People, WorkOutline, TrendingUp, AccessTime, ContentCopy, CloudUpload, CloudOff } from '@mui/icons-material';
 import { useNavigate } from 'react-router-dom';
-import { useRecruiterStats, useMyJobs, useArchiveJob } from '../hooks/useJobs';
+import { useRecruiterStats, useMyJobs, useArchiveJob, usePublishJob, useDuplicateJob } from '../hooks/useJobs';
 import KPICard from '../components/KPICard';
 import ActivityFeed from '../components/ActivityFeed';
 import StatusBadge from '../components/StatusBadge';
@@ -18,6 +18,8 @@ export default function RecruiterDashboard() {
   const { data: stats, isLoading: statsLoading } = useRecruiterStats();
   const { data: jobsData, isLoading: jobsLoading, refetch } = useMyJobs({ limit: 8 });
   const { mutateAsync: archiveJob } = useArchiveJob();
+  const { mutateAsync: publishJob } = usePublishJob();
+  const { mutateAsync: duplicateJob } = useDuplicateJob();
   const [menuState, setMenuState] = useState({ anchor: null, job: null });
 
   const jobs = jobsData?.data || [];
@@ -30,6 +32,26 @@ export default function RecruiterDashboard() {
       toast.success('Job archived');
       refetch();
     } catch { toast.error('Failed to archive'); }
+  };
+
+  const handlePublishToggle = async () => {
+    const job = menuState.job;
+    setMenuState({ anchor: null, job: null });
+    try {
+      await publishJob(job._id);
+      toast.success(job.status === 'active' ? 'Job moved to draft' : 'Job published!');
+      refetch();
+    } catch { toast.error('Failed to update job status'); }
+  };
+
+  const handleDuplicate = async () => {
+    const job = menuState.job;
+    setMenuState({ anchor: null, job: null });
+    try {
+      await duplicateJob(job._id);
+      toast.success('Job duplicated as draft');
+      refetch();
+    } catch { toast.error('Failed to duplicate'); }
   };
 
   const hour = new Date().getHours();
@@ -54,9 +76,9 @@ export default function RecruiterDashboard() {
         <Grid container spacing={3} sx={{ mb: 5 }}>
           {[
             { title: 'Open Positions', value: statsLoading ? '—' : stats?.openJobs ?? 0, icon: WorkOutline, color: '#5B4FCF', trend: 'up', trendValue: '+2 this week' },
+            { title: 'Draft Jobs', value: statsLoading ? '—' : stats?.draftJobs ?? 0, icon: TrendingUp, color: '#D97706', trend: null, trendValue: 'Unpublished' },
             { title: 'Active Applications', value: statsLoading ? '—' : stats?.totalApplications ?? 0, icon: People, color: '#3B82F6', trend: 'up', trendValue: '+18 today' },
             { title: 'Avg AI Match Score', value: statsLoading ? '—' : `${stats?.avgMatchScore ?? 0}%`, icon: BarChart, color: '#059669', trend: 'up', trendValue: '+3% vs last week' },
-            { title: 'Time to Fill (avg)', value: '18 days', icon: AccessTime, color: '#D97706', trend: 'down', trendValue: '-2 days' },
           ].map(kpi => (
             <Grid item xs={12} sm={6} lg={3} key={kpi.title}>
               <KPICard {...kpi} loading={statsLoading} />
@@ -170,6 +192,15 @@ export default function RecruiterDashboard() {
         </MenuItem>
         <MenuItem onClick={() => { setMenuState({ anchor: null, job: null }); navigate(`/pipeline?job=${menuState.job?._id}`); }} sx={{ gap: 1.5 }}>
           <Visibility fontSize="small" /> View Pipeline
+        </MenuItem>
+        <MenuItem onClick={handlePublishToggle} sx={{ gap: 1.5 }}>
+          {menuState.job?.status === 'active'
+            ? <><CloudOff fontSize="small" /> Unpublish (Draft)</>
+            : <><CloudUpload fontSize="small" /> Publish Job</>
+          }
+        </MenuItem>
+        <MenuItem onClick={handleDuplicate} sx={{ gap: 1.5 }}>
+          <ContentCopy fontSize="small" /> Duplicate
         </MenuItem>
         <Divider />
         <MenuItem onClick={handleArchive} sx={{ gap: 1.5, color: 'warning.main' }}>

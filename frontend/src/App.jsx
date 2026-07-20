@@ -11,6 +11,8 @@ import Navbar from './components/Navbar';
 import LandingPage from './pages/LandingPage';
 import LoginPage from './pages/LoginPage';
 import RegisterPage from './pages/RegisterPage';
+import ForgotPasswordPage from './pages/ForgotPasswordPage';
+import ResetPasswordPage from './pages/ResetPasswordPage';
 import JobBoard from './pages/JobBoard';
 import JobDetail from './pages/JobDetail';
 import RecruiterDashboard from './pages/RecruiterDashboard';
@@ -68,15 +70,19 @@ function AppContent() {
           <Route path="/" element={<LandingPage />} />
           <Route path="/login" element={<LoginPage />} />
           <Route path="/register" element={<RegisterPage />} />
+          <Route path="/forgot-password" element={<ForgotPasswordPage />} />
+          <Route path="/reset-password/:token" element={<ResetPasswordPage />} />
           <Route path="/jobs" element={<JobBoard />} />
-          <Route path="/jobs/:id" element={<JobDetail />} />
-
-          {/* Recruiter routes */}
-          <Route path="/recruiter" element={<RecruiterRoute><RecruiterDashboard /></RecruiterRoute>} />
+          {/* /jobs/new must be before /jobs/:id to avoid Express-style conflict */}
           <Route path="/jobs/new" element={<RecruiterRoute><PostJob /></RecruiterRoute>} />
+          <Route path="/jobs/:id" element={<JobDetail />} />
           <Route path="/jobs/:id/edit" element={<RecruiterRoute><PostJob /></RecruiterRoute>} />
+
+          {/* Recruiter-only routes */}
+          <Route path="/recruiter" element={<RecruiterRoute><RecruiterDashboard /></RecruiterRoute>} />
           <Route path="/pipeline" element={<RecruiterRoute><ApplicationPipeline /></RecruiterRoute>} />
           <Route path="/rankings" element={<RecruiterRoute><CandidateRanking /></RecruiterRoute>} />
+
 
           {/* Applicant routes */}
           <Route path="/dashboard" element={<ApplicantRoute><ApplicantDashboard /></ApplicantRoute>} />

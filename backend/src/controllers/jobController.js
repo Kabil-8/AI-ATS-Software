@@ -139,23 +139,22 @@ exports.getMyJobs = async (req, res, next) => {
 // @GET /api/jobs/stats — Recruiter stats for dashboard
 exports.getRecruiterStats = async (req, res, next) => {
   try {
-    const [openJobs, totalApplications, avgScoreResult, recentActivity] = await Promise.all([
+    const myJobIds = await Job.find({ postedBy: req.user._id }).distinct('_id');
+
+    const [openJobs, draftJobs, totalApplications, avgScoreResult, recentActivity] = await Promise.all([
       Job.countDocuments({ postedBy: req.user._id, status: 'active' }),
-      Application.countDocuments({
-        job: { $in: await Job.find({ postedBy: req.user._id }).distinct('_id') },
-      }),
+      Job.countDocuments({ postedBy: req.user._id, status: 'draft' }),
+      Application.countDocuments({ job: { $in: myJobIds } }),
       Application.aggregate([
         {
           $match: {
-            job: { $in: await Job.find({ postedBy: req.user._id }).distinct('_id') },
+            job: { $in: myJobIds },
             'aiAnalysis.isAnalyzed': true,
           },
         },
         { $group: { _id: null, avgScore: { $avg: '$aiAnalysis.matchScore' } } },
       ]),
-      Application.find({
-        job: { $in: await Job.find({ postedBy: req.user._id }).distinct('_id') },
-      })
+      Application.find({ job: { $in: myJobIds } })
         .populate('applicant', 'name')
         .populate('job', 'title')
         .sort('-updatedAt')
@@ -167,6 +166,7 @@ exports.getRecruiterStats = async (req, res, next) => {
       success: true,
       data: {
         openJobs,
+        draftJobs,
         totalApplications,
         avgMatchScore: avgScoreResult[0] ? Math.round(avgScoreResult[0].avgScore) : 0,
         recentActivity,
@@ -176,3 +176,72 @@ exports.getRecruiterStats = async (req, res, next) => {
     next(error);
   }
 };
+
+// @PATCH /api/jobs/:id/publish — Recruiter: toggle draft ↔ active
+exports.publishJob = async (req, res, next) => {
+  try {
+    const job = await Job.findOne({ _id: req.params.id, postedBy: req.user._id });
+    if (!job) return res.status(404).json({ success: false, message: 'Job not found or unauthorized' });
+
+    if (['archived', 'closed'].includes(job.status)) {
+      return res.status(400).json({ success: false, message: 'Cannot publish an archived or closed job' });
+    }
+
+    job.status = job.status === 'active' ? 'draft' : 'active';
+    if (job.status === 'active' && !job.publishedAt) {
+      job.publishedAt = new Date();
+    }
+    await job.save({ validateBeforeSave: false });
+
+    res.json({
+      success: true,
+      message: job.status === 'active' ? 'Job published successfully' : 'Job moved back to draft',
+      data: job,
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+// @PATCH /api/jobs/:id/close — Recruiter: close job (stops new applications)
+exports.closeJob = async (req, res, next) => {
+  try {
+    const job = await Job.findOneAndUpdate(
+      { _id: req.params.id, postedBy: req.user._id, status: { $in: ['active', 'draft'] } },
+      { status: 'closed' },
+      { new: true }
+    );
+    if (!job) return res.status(404).json({ success: false, message: 'Job not found, unauthorized, or already closed/archived' });
+
+    res.json({ success: true, message: 'Job closed successfully', data: job });
+  } catch (error) {
+    next(error);
+  }
+};
+
+// @POST /api/jobs/:id/duplicate — Recruiter: clone a job as a new draft
+exports.duplicateJob = async (req, res, next) => {
+  try {
+    const source = await Job.findOne({ _id: req.params.id, postedBy: req.user._id });
+    if (!source) return res.status(404).json({ success: false, message: 'Job not found or unauthorized' });
+
+    // Build a copy without lifecycle fields
+    const { _id, createdAt, updatedAt, publishedAt, views, applicationCount, __v, ...jobData } = source.toObject();
+
+    const duplicate = await Job.create({
+      ...jobData,
+      title: `${source.title} (Copy)`,
+      status: 'draft',
+      views: 0,
+      applicationCount: 0,
+      publishedAt: null,
+      applicationDeadline: null,
+      postedBy: req.user._id,
+    });
+
+    res.status(201).json({ success: true, message: 'Job duplicated as draft', data: duplicate });
+  } catch (error) {
+    next(error);
+  }
+};
+

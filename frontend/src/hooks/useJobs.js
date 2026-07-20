@@ -66,3 +66,36 @@ export const useArchiveJob = () => {
     onSuccess: () => qc.invalidateQueries({ queryKey: ['myJobs'] }),
   });
 };
+
+/** Toggle a job between draft and active */
+export const usePublishJob = () => {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id) => api.patch(`/jobs/${id}/publish`),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['myJobs'] });
+      qc.invalidateQueries({ queryKey: ['recruiterStats'] });
+    },
+  });
+};
+
+/** Close a job — stops new applications */
+export const useCloseJob = () => {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id) => api.patch(`/jobs/${id}/close`),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['myJobs'] });
+      qc.invalidateQueries({ queryKey: ['recruiterStats'] });
+    },
+  });
+};
+
+/** Duplicate a job — creates a new draft copy */
+export const useDuplicateJob = () => {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id) => api.post(`/jobs/${id}/duplicate`),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['myJobs'] }),
+  });
+};

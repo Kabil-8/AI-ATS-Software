@@ -111,3 +111,20 @@ exports.sendStatusUpdate = async (applicant, job, newStatus, note) => {
   `;
   await sendEmail(applicant.email, `Application Update — ${job.title}`, baseTemplate(content));
 };
+
+exports.sendPasswordReset = async (user, resetUrl) => {
+  const content = `
+    <p>Hi <strong>${user.name}</strong>,</p>
+    <p>We received a request to reset the password for your ATS Pro account.</p>
+    <p>Click the button below to set a new password. This link is valid for <strong>1 hour</strong>.</p>
+    <a href="${resetUrl}" class="btn">Reset Password</a>
+    <p style="font-size:13px; color:#6B6F80; margin-top:24px;">
+      If you didn't request a password reset, you can safely ignore this email — your password will remain unchanged.
+    </p>
+    <p style="font-size:12px; color:#9CA3AF; word-break:break-all;">
+      Or copy this link: ${resetUrl}
+    </p>
+  `;
+  await sendEmail(user.email, 'Reset Your ATS Pro Password', baseTemplate(content));
+};
+
