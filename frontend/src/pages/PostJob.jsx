@@ -8,6 +8,11 @@ import { Add, Remove, WorkOutline, Save, ArrowBack, Publish, DraftsTwoTone, Info
 import { useNavigate, useParams } from 'react-router-dom';
 import { useCreateJob, useUpdateJob, useJob } from '../hooks/useJobs';
 import toast from 'react-hot-toast';
+// const DEPARTMENTS = ['Engineering', 'Design', 'Product', 'Marketing', 'Sales', 'HR', 'Finance', 'Operations', 'Data Science', 'Legal'];
+// const TYPES = ['full-time', 'part-time', 'remote', 'contract', 'internship'];
+// const LEVELS = ['entry', 'mid', 'senior', 'lead', 'manager'];
+// const BENEFITS = ['Health Insurance', 'Remote Work', 'Flexible Hours', 'Stock Options', 'Learning Budget', '401k / Pension', 'Unlimited PTO', 'Gym Membership'];
+
 
 const DEPARTMENTS = ['Engineering', 'Design', 'Product', 'Marketing', 'Sales', 'HR', 'Finance', 'Operations', 'Data Science', 'Legal'];
 const TYPES = ['full-time', 'part-time', 'remote', 'contract', 'internship'];
