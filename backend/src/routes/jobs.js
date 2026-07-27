@@ -2,7 +2,7 @@ const express = require('express');
 const router = express.Router();
 const {
   getJobs, getJob, createJob, updateJob, archiveJob,
-  getMyJobs, getRecruiterStats,
+  getMyJobs, getRecruiterStats, getJobAnalytics, bulkAction,
   publishJob, closeJob, duplicateJob,
 } = require('../controllers/jobController');
 const { protect, requireRole } = require('../middleware/auth');
@@ -14,6 +14,8 @@ router.get('/', getJobs);
 router.use(protect, requireRole('recruiter'));
 router.get('/recruiter/stats', getRecruiterStats);
 router.get('/recruiter/my-jobs', getMyJobs);
+router.get('/recruiter/analytics', getJobAnalytics);
+router.post('/recruiter/bulk-action', bulkAction);
 router.post('/', createJob);
 
 // Specific job actions — placed before generic /:id so express matches them first

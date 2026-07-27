@@ -105,24 +105,28 @@ exports.archiveJob = async (req, res, next) => {
 // @GET /api/jobs/recruiter/my-jobs — Recruiter's own jobs
 exports.getMyJobs = async (req, res, next) => {
   try {
-    const { status = 'active', page = 1, limit = 10 } = req.query;
+    const { status, page = 1, limit = 10, search, sort = '-createdAt' } = req.query;
     const filter = { postedBy: req.user._id };
-    if (status !== 'all') filter.status = status;
+    if (status && status !== 'all') filter.status = status;
+    if (search) filter.$text = { $search: search };
 
     const skip = (Number(page) - 1) * Number(limit);
     const [jobs, total] = await Promise.all([
-      Job.find(filter).sort('-createdAt').skip(skip).limit(Number(limit)),
+      Job.find(filter).sort(sort).skip(skip).limit(Number(limit)),
       Job.countDocuments(filter),
     ]);
 
     // Append avg AI match score for each job
     const jobsWithStats = await Promise.all(
       jobs.map(async (job) => {
-        const applications = await Application.find({ job: job._id, 'aiAnalysis.isAnalyzed': true });
-        const avgScore = applications.length
-          ? Math.round(applications.reduce((sum, a) => sum + (a.aiAnalysis.matchScore || 0), 0) / applications.length)
+        const [allApps, analyzedApps] = await Promise.all([
+          Application.countDocuments({ job: job._id }),
+          Application.find({ job: job._id, 'aiAnalysis.isAnalyzed': true }).select('aiAnalysis.matchScore'),
+        ]);
+        const avgScore = analyzedApps.length
+          ? Math.round(analyzedApps.reduce((sum, a) => sum + (a.aiAnalysis.matchScore || 0), 0) / analyzedApps.length)
           : null;
-        return { ...job.toJSON(), avgMatchScore: avgScore, applicationCount: applications.length };
+        return { ...job.toJSON(), avgMatchScore: avgScore, applicationCount: allApps };
       })
     );
 
@@ -245,3 +249,97 @@ exports.duplicateJob = async (req, res, next) => {
   }
 };
 
+// @GET /api/jobs/recruiter/analytics — Per-job analytics for recruiter dashboard
+exports.getJobAnalytics = async (req, res, next) => {
+  try {
+    const myJobs = await Job.find({ postedBy: req.user._id }).select('title status views applicationCount createdAt publishedAt');
+    const myJobIds = myJobs.map((j) => j._id);
+
+    // Funnel counts across all jobs
+    const [stageCounts, topJobs, trend30d] = await Promise.all([
+      Application.aggregate([
+        { $match: { job: { $in: myJobIds } } },
+        { $group: { _id: '$status', count: { $sum: 1 } } },
+      ]),
+      Application.aggregate([
+        { $match: { job: { $in: myJobIds } } },
+        { $group: { _id: '$job', count: { $sum: 1 } } },
+        { $sort: { count: -1 } },
+        { $limit: 5 },
+        { $lookup: { from: 'jobs', localField: '_id', foreignField: '_id', as: 'jobInfo' } },
+        { $unwind: '$jobInfo' },
+        { $project: { title: '$jobInfo.title', count: 1, status: '$jobInfo.status' } },
+      ]),
+      Application.aggregate([
+        {
+          $match: {
+            job: { $in: myJobIds },
+            createdAt: { $gte: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000) },
+          },
+        },
+        {
+          $group: {
+            _id: { $dateToString: { format: '%Y-%m-%d', date: '$createdAt' } },
+            count: { $sum: 1 },
+          },
+        },
+        { $sort: { _id: 1 } },
+      ]),
+    ]);
+
+    // Map funnel stages to ordered pipeline steps
+    const STAGE_ORDER = ['applied', 'screening', 'interview', 'offered', 'hired'];
+    const stageMap = Object.fromEntries(stageCounts.map((s) => [s._id, s.count]));
+    const funnel = STAGE_ORDER.map((stage) => ({ stage, count: stageMap[stage] || 0 }));
+
+    // Per-job stats for bar chart
+    const jobStats = myJobs.map((j) => ({
+      _id: j._id,
+      title: j.title.length > 20 ? j.title.slice(0, 20) + '…' : j.title,
+      status: j.status,
+      views: j.views,
+      applications: j.applicationCount,
+      conversionRate:
+        j.views > 0 ? Math.round((j.applicationCount / j.views) * 100) : 0,
+    }));
+
+    res.json({
+      success: true,
+      data: {
+        funnel,
+        jobStats,
+        topJobs,
+        trend30d,
+        totals: {
+          views: myJobs.reduce((s, j) => s + j.views, 0),
+          applications: myJobs.reduce((s, j) => s + j.applicationCount, 0),
+          activeJobs: myJobs.filter((j) => j.status === 'active').length,
+          draftJobs: myJobs.filter((j) => j.status === 'draft').length,
+        },
+      },
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+// @POST /api/jobs/recruiter/bulk-action — Bulk status update
+exports.bulkAction = async (req, res, next) => {
+  try {
+    const { jobIds, action } = req.body;
+    if (!Array.isArray(jobIds) || !jobIds.length) {
+      return res.status(400).json({ success: false, message: 'jobIds array is required' });
+    }
+    const validActions = { archive: 'archived', publish: 'active', close: 'closed', draft: 'draft' };
+    if (!validActions[action]) {
+      return res.status(400).json({ success: false, message: 'Invalid action' });
+    }
+    const result = await Job.updateMany(
+      { _id: { $in: jobIds }, postedBy: req.user._id },
+      { status: validActions[action] }
+    );
+    res.json({ success: true, message: `${result.modifiedCount} jobs updated`, modifiedCount: result.modifiedCount });
+  } catch (error) {
+    next(error);
+  }
+};

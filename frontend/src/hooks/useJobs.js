@@ -40,6 +40,17 @@ export const useRecruiterStats = () =>
     refetchInterval: 30000,
   });
 
+export const useJobAnalytics = () =>
+  useQuery({
+    queryKey: ['jobAnalytics'],
+    queryFn: async () => {
+      const { data } = await api.get('/jobs/recruiter/analytics');
+      return data.data;
+    },
+    staleTime: 1000 * 60 * 2,
+    refetchInterval: 60000,
+  });
+
 export const useCreateJob = () => {
   const qc = useQueryClient();
   return useMutation({
@@ -75,6 +86,7 @@ export const usePublishJob = () => {
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['myJobs'] });
       qc.invalidateQueries({ queryKey: ['recruiterStats'] });
+      qc.invalidateQueries({ queryKey: ['jobAnalytics'] });
     },
   });
 };
@@ -87,6 +99,7 @@ export const useCloseJob = () => {
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['myJobs'] });
       qc.invalidateQueries({ queryKey: ['recruiterStats'] });
+      qc.invalidateQueries({ queryKey: ['jobAnalytics'] });
     },
   });
 };
@@ -96,6 +109,22 @@ export const useDuplicateJob = () => {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (id) => api.post(`/jobs/${id}/duplicate`),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['myJobs'] }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['myJobs'] });
+      qc.invalidateQueries({ queryKey: ['jobAnalytics'] });
+    },
+  });
+};
+
+/** Bulk action — archive / publish / close / draft multiple jobs */
+export const useBulkJobAction = () => {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ jobIds, action }) => api.post('/jobs/recruiter/bulk-action', { jobIds, action }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['myJobs'] });
+      qc.invalidateQueries({ queryKey: ['recruiterStats'] });
+      qc.invalidateQueries({ queryKey: ['jobAnalytics'] });
+    },
   });
 };
