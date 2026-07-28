@@ -16,7 +16,7 @@ export const useJob = (id) =>
     queryKey: ['job', id],
     queryFn: async () => {
       const { data } = await api.get(`/jobs/${id}`);
-      return data.data;
+      return data.job;
     },
     enabled: !!id,
   });
@@ -35,7 +35,7 @@ export const useRecruiterStats = () =>
     queryKey: ['recruiterStats'],
     queryFn: async () => {
       const { data } = await api.get('/jobs/recruiter/stats');
-      return data.data;
+      return data.stats || {};
     },
     refetchInterval: 30000,
   });

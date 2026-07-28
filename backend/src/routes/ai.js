@@ -1,12 +1,12 @@
 const express = require('express');
 const router = express.Router();
-const { analyzeApplication, analyzeBatch, getAnalysisStatus } = require('../controllers/aiController');
+const aiController = require('../controllers/aiController');
 const { protect, requireRole } = require('../middleware/auth');
 
-router.use(protect, requireRole('recruiter'));
+router.use(protect);
 
-router.post('/analyze/:applicationId', analyzeApplication);
-router.post('/analyze-batch/:jobId', analyzeBatch);
-router.get('/status/:applicationId', getAnalysisStatus);
+router.post('/parse-resume', aiController.parseResume);
+router.get('/rank-candidates/:jobId', requireRole('recruiter', 'company_admin', 'interviewer'), aiController.rankCandidates);
+router.post('/resume-feedback', aiController.getResumeFeedback);
 
 module.exports = router;

@@ -6,7 +6,7 @@ export const useMyApplications = () =>
     queryKey: ['myApplications'],
     queryFn: async () => {
       const { data } = await api.get('/applications/my');
-      return data.data;
+      return data.applications || data.data || [];
     },
   });
 
@@ -14,8 +14,9 @@ export const useJobApplications = (jobId, params = {}) =>
   useQuery({
     queryKey: ['jobApplications', jobId, params],
     queryFn: async () => {
+      if (!jobId) return [];
       const { data } = await api.get(`/applications/job/${jobId}`, { params });
-      return data.data;
+      return data.applications || data.data || [];
     },
     enabled: !!jobId,
   });
@@ -25,7 +26,7 @@ export const useApplication = (id) =>
     queryKey: ['application', id],
     queryFn: async () => {
       const { data } = await api.get(`/applications/${id}`);
-      return data.data;
+      return data.application || data.data;
     },
     enabled: !!id,
   });
@@ -45,6 +46,7 @@ export const useUpdateStatus = () => {
     mutationFn: ({ id, status, note }) => api.patch(`/applications/${id}/status`, { status, note }),
     onSuccess: (_, { jobId }) => {
       qc.invalidateQueries({ queryKey: ['jobApplications', jobId] });
+      qc.invalidateQueries({ queryKey: ['myApplications'] });
     },
   });
 };
@@ -52,7 +54,7 @@ export const useUpdateStatus = () => {
 export const useAnalyzeApplication = () => {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (applicationId) => api.post(`/ai/analyze/${applicationId}`),
+    mutationFn: (applicationId) => api.post(`/ai/parse-resume`, { applicationId }),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['jobApplications'] }),
   });
 };
@@ -60,9 +62,9 @@ export const useAnalyzeApplication = () => {
 export const useAnalyzeBatch = () => {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (jobId) => api.post(`/ai/analyze-batch/${jobId}`),
+    mutationFn: (jobId) => api.get(`/ai/rank-candidates/${jobId}`),
     onSuccess: (_, jobId) => {
-      setTimeout(() => qc.invalidateQueries({ queryKey: ['jobApplications', jobId] }), 5000);
+      qc.invalidateQueries({ queryKey: ['jobApplications', jobId] });
     },
   });
 };

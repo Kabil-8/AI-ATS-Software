@@ -20,7 +20,7 @@ export default function RecruiterDashboard() {
   const { mutateAsync: archiveJob } = useArchiveJob();
   const [menuState, setMenuState] = useState({ anchor: null, job: null });
 
-  const jobs = jobsData?.data || [];
+  const jobs = jobsData?.jobs || [];
 
   const handleArchive = async () => {
     const job = menuState.job;

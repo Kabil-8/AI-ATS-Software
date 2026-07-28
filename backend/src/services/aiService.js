@@ -27,13 +27,33 @@ exports.analyzeResume = async ({ resumeKey, resumeUrl, jobTitle, jobDescription,
 
   const raw = response.data.result;
   return {
-    matchScore: raw.match_score,
-    skillsMatched: raw.skills_matched || [],
-    skillsMissing: raw.skills_missing || [],
-    experienceSummary: raw.experience_summary || '',
+    matchScore: raw.overallScore, // Legacy mapping
+    overallScore: raw.overallScore,
+    technicalScore: raw.technicalScore,
+    semanticScore: raw.semanticScore,
+    experienceScore: raw.experienceScore,
+    educationScore: raw.educationScore,
+    projectScore: raw.projectScore,
+    certificationScore: raw.certificationScore,
+    resumeQuality: raw.resumeQuality,
+    softSkillScore: raw.softSkillScore,
+    portfolioScore: raw.portfolioScore,
+    
+    recommendation: raw.recommendation,
+    hiringRecommendation: raw.hiringRecommendation,
+    interviewProbability: raw.interviewProbability,
+    explanation: raw.explanation,
+
+    skillsMatched: raw.matchedSkills || [],
+    skillsMissing: raw.missingSkills || [],
     strengths: raw.strengths || [],
     weaknesses: raw.weaknesses || [],
-    summary: raw.summary || '',
-    suggestedQuestions: raw.suggested_questions || [],
+    
+    resumeSuggestions: raw.resumeSuggestions || [],
+    projectRelevance: raw.projectRelevance || [],
+    
+    experienceSummary: raw.explanation || '',
+    summary: raw.explanation || '',
+    suggestedQuestions: [],
   };
 };

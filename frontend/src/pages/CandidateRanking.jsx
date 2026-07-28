@@ -176,7 +176,7 @@ function CandidateRow({ app, index, jobId, onRefetch }) {
 export default function CandidateRanking() {
   const theme = useTheme();
   const { data: jobsData } = useMyJobs({ status: 'active', limit: 50 });
-  const jobs = jobsData?.data || [];
+  const jobs = jobsData?.jobs || [];
   const [selectedJobId, setSelectedJobId] = useState('');
   const [scoreRange, setScoreRange] = useState([0, 100]);
   const [statusFilter, setStatusFilter] = useState('');

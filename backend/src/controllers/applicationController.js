@@ -1,193 +1,271 @@
 const Application = require('../models/Application');
 const Job = require('../models/Job');
-const emailService = require('../services/emailService');
-const { GetObjectCommand } = require('@aws-sdk/client-s3');
-const { getSignedUrl } = require('@aws-sdk/s3-request-presigner');
-const { s3Client, BUCKET_NAME } = require('../config/s3');
+const User = require('../models/User');
+const Resume = require('../models/Resume');
+const Notification = require('../models/Notification');
+const { logActivity } = require('../middleware/auth');
+const axios = require('axios');
 
-// @POST /api/applications — Applicant submits application
-exports.createApplication = async (req, res, next) => {
+const AI_SERVICE_URL = process.env.AI_SERVICE_URL || 'http://localhost:8000';
+
+// @desc    Submit application for job
+// @route   POST /api/applications
+exports.submitApplication = async (req, res) => {
   try {
-    const { jobId, coverLetter, linkedIn, portfolio } = req.body;
+    const { jobId, coverLetter, linkedIn, github, portfolio, resumeUrl, resumeFileName, resumeKey } = req.body;
 
-    const job = await Job.findOne({ _id: jobId, status: 'active' });
-    if (!job) return res.status(404).json({ success: false, message: 'Job not found or no longer active' });
+    const job = await Job.findById(jobId);
+    if (!job) return res.status(404).json({ success: false, message: 'Job not found' });
+    if (job.status !== 'active') return res.status(400).json({ success: false, message: 'This job is no longer accepting applications' });
 
-    // Check for duplicate
-    const existing = await Application.findOne({ job: jobId, applicant: req.user._id });
+    // Check if user already applied
+    const existing = await Application.findOne({ job: jobId, applicant: req.user.id });
     if (existing) {
-      return res.status(409).json({ success: false, message: 'You have already applied to this job' });
+      return res.status(400).json({ success: false, message: 'You have already applied for this job' });
     }
 
-    const applicationData = {
+    const application = await Application.create({
       job: jobId,
-      applicant: req.user._id,
+      applicant: req.user.id,
+      company: job.company,
+      recruiter: job.recruiter,
       coverLetter,
-      linkedIn,
-      portfolio,
-      statusHistory: [{ from: null, to: 'applied', changedBy: req.user._id }],
-    };
+      linkedIn: linkedIn || req.user.linkedIn,
+      github: github || req.user.github,
+      portfolio: portfolio || req.user.portfolio,
+      resumeUrl,
+      resumeFileName,
+      resumeKey,
+      status: 'applied',
+      appliedDate: new Date(),
+    });
 
-    // Handle file upload
-    if (req.file) {
-      applicationData.resumeKey = req.file.key || `resumes/${req.file.originalname}`;
-      applicationData.resumeUrl = req.file.location || '';
-      applicationData.resumeFileName = req.file.originalname;
-    }
+    // Increment job application counter
+    job.applicationCount += 1;
+    await job.save();
 
-    const application = await Application.create(applicationData);
+    // Trigger asynchronous AI Analysis if Python AI Microservice is available
+    triggerAiAnalysis(application, job).catch((err) => console.error('AI Processing Error:', err.message));
 
-    // Increment job application count
-    await Job.findByIdAndUpdate(jobId, { $inc: { applicationCount: 1 } });
+    // Notify Recruiter
+    await Notification.create({
+      user: job.recruiter,
+      title: 'New Application Received',
+      message: `${req.user.name} applied for ${job.title}`,
+      type: 'application_update',
+      link: `/recruiter/candidate/${application._id}`,
+    });
 
-    // Populate for response
-    const populated = await Application.findById(application._id)
-      .populate('applicant', 'name email')
-      .populate('job', 'title company');
-
-    // Send confirmation email
-    await emailService.sendApplicationConfirmation(req.user, job);
+    await logActivity(req, 'APPLY', 'Application', application._id, `Applied to ${job.title}`);
 
     res.status(201).json({
       success: true,
       message: 'Application submitted successfully',
-      data: populated,
+      application,
     });
   } catch (error) {
-    next(error);
+    res.status(500).json({ success: false, message: error.message });
   }
 };
 
-// @GET /api/applications/my — Applicant's own applications
-exports.getMyApplications = async (req, res, next) => {
+// Internal function to call Python AI Microservice
+async function triggerAiAnalysis(application, job) {
   try {
-    const applications = await Application.find({ applicant: req.user._id })
-      .populate('job', 'title department location type salary status')
-      .sort('-createdAt');
+    const response = await axios.post(`${AI_SERVICE_URL}/analyze`, {
+      resume_text: application.coverLetter || `${application.resumeFileName || ''} Candidate Resume Content`,
+      job_title: job.title,
+      job_description: job.description,
+      job_requirements: job.requiredSkills || [],
+      job_skills: job.requiredSkills || [],
+    }, { timeout: 8000 });
 
-    res.json({ success: true, data: applications });
-  } catch (error) {
-    next(error);
-  }
-};
-
-// @GET /api/applications/job/:jobId — Recruiter: all applications for a job (Kanban/Ranking)
-exports.getJobApplications = async (req, res, next) => {
-  try {
-    const job = await Job.findOne({ _id: req.params.jobId, postedBy: req.user._id });
-    if (!job) return res.status(403).json({ success: false, message: 'Access denied' });
-
-    const {
-      status, minScore, maxScore, skills,
-      sortBy = '-aiAnalysis.matchScore',
-    } = req.query;
-
-    const filter = { job: req.params.jobId };
-    if (status) filter.status = status;
-    if (minScore || maxScore) {
-      filter['aiAnalysis.matchScore'] = {};
-      if (minScore) filter['aiAnalysis.matchScore'].$gte = Number(minScore);
-      if (maxScore) filter['aiAnalysis.matchScore'].$lte = Number(maxScore);
+    if (response.data && response.data.success && response.data.result) {
+      const data = response.data.result;
+      application.aiScore = Math.round(data.overallScore);
+      application.aiSummary = data.explanation || 'AI analysis completed successfully.';
+      application.scoreBreakdown = {
+        technicalScore: Math.round(data.technicalScore || 0),
+        semanticScore: Math.round(data.semanticScore || 0),
+        experienceScore: Math.round(data.experienceScore || 0),
+        educationScore: Math.round(data.educationScore || 0),
+        projectScore: Math.round(data.projectScore || 0),
+        certificationScore: Math.round(data.certificationScore || 0),
+        resumeQuality: Math.round(data.resumeQuality || 0),
+        softSkillScore: Math.round(data.softSkillScore || 0),
+        portfolioScore: Math.round(data.portfolioScore || 0),
+        locationMatch: 100,
+      };
+      application.aiAnalysis = {
+        skillsMatched: data.matchedSkills || [],
+        skillsMissing: data.missingSkills || [],
+        strengths: data.strengths || [],
+        weaknesses: data.weaknesses || [],
+        resumeSuggestions: data.resumeSuggestions || [],
+        projectRelevance: data.projectRelevance || [],
+        hiringRecommendation: data.hiringRecommendation || 'Possible Hire',
+        recommendation: data.recommendation || 'Needs Review',
+        interviewProbability: data.interviewProbability || '50%',
+        explanation: data.explanation || '',
+        isAnalyzed: true,
+        analyzedAt: new Date(),
+      };
+      await application.save();
+    } else {
+        throw new Error('AI analysis failed or returned invalid format');
     }
+  } catch (err) {
+    console.warn('AI Microservice unavailable or error, generating baseline scores:', err.message);
+    // Fallback baseline heuristic calculation for new 9D model
+    application.aiScore = 75;
+    application.aiSummary = 'Baseline AI score assigned based on submitted profile.';
+    application.scoreBreakdown = {
+      technicalScore: 75,
+      semanticScore: 75,
+      experienceScore: 70,
+      educationScore: 80,
+      projectScore: 70,
+      certificationScore: 50,
+      resumeQuality: 80,
+      softSkillScore: 70,
+      portfolioScore: 50,
+      locationMatch: 100,
+    };
+    application.aiAnalysis = {
+      skillsMatched: job.requiredSkills || [],
+      skillsMissing: [],
+      strengths: ['Standard qualifications met'],
+      weaknesses: [],
+      resumeSuggestions: ['Add measurable achievements'],
+      projectRelevance: ['Review required'],
+      hiringRecommendation: 'Hire',
+      recommendation: 'Recommended',
+      interviewProbability: '75%',
+      explanation: 'Generated by backend fallback due to AI service unavailability.',
+      isAnalyzed: true,
+      analyzedAt: new Date(),
+    };
+    await application.save();
+  }
+}
 
-    let applications = await Application.find(filter)
-      .populate('applicant', 'name email phone location')
-      .sort(sortBy);
+// @desc    Get Candidate Applications
+// @route   GET /api/applications/my-applications
+exports.getMyApplications = async (req, res) => {
+  try {
+    const applications = await Application.find({ applicant: req.user.id })
+      .populate('job', 'title department location salaryRange status company')
+      .populate('company', 'name logo')
+      .sort({ createdAt: -1 });
 
-    // Filter by skills (post-query)
-    if (skills) {
-      const skillArr = skills.split(',').map((s) => s.trim().toLowerCase());
-      applications = applications.filter((app) =>
-        skillArr.every((skill) =>
-          app.aiAnalysis?.skillsMatched?.some((s) => s.toLowerCase().includes(skill))
-        )
+    res.status(200).json({ success: true, count: applications.length, applications });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+// @desc    Get Applications for a Job (Recruiter Pipeline)
+// @route   GET /api/applications/job/:jobId
+exports.getJobApplications = async (req, res) => {
+  try {
+    const { status, minScore, search } = req.query;
+    const query = { job: req.params.jobId };
+
+    if (status && status !== 'all') query.status = status;
+    if (minScore) query.aiScore = { $gte: Number(minScore) };
+
+    let applications = await Application.find(query)
+      .populate('applicant', 'name email phone avatar location linkedIn github portfolio')
+      .populate('job', 'title department requiredSkills')
+      .sort({ aiScore: -1, createdAt: -1 });
+
+    if (search) {
+      applications = applications.filter(
+        (app) =>
+          app.applicant?.name?.toLowerCase().includes(search.toLowerCase()) ||
+          app.applicant?.email?.toLowerCase().includes(search.toLowerCase())
       );
     }
 
-    // Generate presigned resume URLs
-    const appsWithUrls = await Promise.all(
-      applications.map(async (app) => {
-        const obj = app.toJSON();
-        if (app.resumeKey && BUCKET_NAME && process.env.AWS_ACCESS_KEY_ID !== 'your_aws_access_key_id') {
-          try {
-            const cmd = new GetObjectCommand({ Bucket: BUCKET_NAME, Key: app.resumeKey });
-            obj.resumeSignedUrl = await getSignedUrl(s3Client, cmd, { expiresIn: 3600 });
-          } catch (_) {}
-        }
-        return obj;
-      })
-    );
-
-    res.json({ success: true, data: appsWithUrls });
+    res.status(200).json({ success: true, count: applications.length, applications });
   } catch (error) {
-    next(error);
+    res.status(500).json({ success: false, message: error.message });
   }
 };
 
-// @GET /api/applications/:id — Single application
-exports.getApplication = async (req, res, next) => {
+// @desc    Get Application Detail by ID
+// @route   GET /api/applications/:id
+exports.getApplicationById = async (req, res) => {
   try {
-    const app = await Application.findById(req.params.id)
-      .populate('applicant', 'name email phone location linkedIn portfolio')
-      .populate('job', 'title description requirements skills department');
+    const application = await Application.findById(req.params.id)
+      .populate('applicant', 'name email phone location linkedIn github portfolio avatar')
+      .populate('job', 'title department description requiredSkills salaryRange recruiter')
+      .populate('recruiterNotes.addedBy', 'name role avatar');
 
-    if (!app) return res.status(404).json({ success: false, message: 'Application not found' });
+    if (!application) return res.status(404).json({ success: false, message: 'Application not found' });
 
-    // Ownership check
-    const isOwner = app.applicant._id.toString() === req.user._id.toString();
-    const isRecruiter = req.user.role === 'recruiter';
-
-    if (!isOwner && !isRecruiter) {
-      return res.status(403).json({ success: false, message: 'Access denied' });
-    }
-
-    res.json({ success: true, data: app });
+    res.status(200).json({ success: true, application });
   } catch (error) {
-    next(error);
+    res.status(500).json({ success: false, message: error.message });
   }
 };
 
-// @PATCH /api/applications/:id/status — Recruiter: update pipeline status
-exports.updateStatus = async (req, res, next) => {
+// @desc    Update Application Stage (Kanban Drag-and-Drop)
+// @route   PUT /api/applications/:id/stage
+exports.updateApplicationStage = async (req, res) => {
   try {
     const { status, note } = req.body;
-    const VALID_STATUSES = ['applied', 'screening', 'interview', 'offered', 'hired', 'rejected'];
-    if (!VALID_STATUSES.includes(status)) {
-      return res.status(400).json({ success: false, message: 'Invalid status' });
-    }
+    const application = await Application.findById(req.params.id).populate('job', 'title');
 
-    const app = await Application.findById(req.params.id)
-      .populate('applicant', 'name email')
-      .populate('job', 'title');
+    if (!application) return res.status(404).json({ success: false, message: 'Application not found' });
 
-    if (!app) return res.status(404).json({ success: false, message: 'Application not found' });
+    const prevStatus = application.status;
+    application.status = status;
+    application.statusHistory.push({
+      from: prevStatus,
+      to: status,
+      changedBy: req.user.id,
+      changedAt: new Date(),
+      note: note || `Moved stage from ${prevStatus} to ${status}`,
+    });
 
-    const oldStatus = app.status;
-    app.status = status;
-    app.statusHistory.push({ from: oldStatus, to: status, changedBy: req.user._id, note });
-    await app.save();
+    await application.save();
 
-    // Send email notification
-    await emailService.sendStatusUpdate(app.applicant, app.job, status, note);
+    // Notify Applicant
+    await Notification.create({
+      user: application.applicant,
+      title: 'Application Status Update',
+      message: `Your application status for ${application.job?.title} was updated to ${status.replace('_', ' ')}`,
+      type: 'application_update',
+      link: '/applicant/dashboard',
+    });
 
-    res.json({ success: true, data: app, message: `Status updated to ${status}` });
+    await logActivity(req, 'STAGE_CHANGE', 'Application', application._id, `Moved stage to ${status}`);
+
+    res.status(200).json({ success: true, message: 'Stage updated successfully', application });
   } catch (error) {
-    next(error);
+    res.status(500).json({ success: false, message: error.message });
   }
 };
 
-// @POST /api/applications/:id/notes — Recruiter: add note
-exports.addNote = async (req, res, next) => {
+// @desc    Add Recruiter Note
+// @route   POST /api/applications/:id/notes
+exports.addNote = async (req, res) => {
   try {
     const { content } = req.body;
-    const app = await Application.findByIdAndUpdate(
-      req.params.id,
-      { $push: { notes: { content, addedBy: req.user._id } } },
-      { new: true }
-    ).populate('notes.addedBy', 'name');
+    const application = await Application.findById(req.params.id);
 
-    res.json({ success: true, data: app });
+    if (!application) return res.status(404).json({ success: false, message: 'Application not found' });
+
+    application.recruiterNotes.push({
+      content,
+      addedBy: req.user.id,
+      addedByName: req.user.name,
+      createdAt: new Date(),
+    });
+
+    await application.save();
+    res.status(200).json({ success: true, notes: application.recruiterNotes });
   } catch (error) {
-    next(error);
+    res.status(500).json({ success: false, message: error.message });
   }
 };

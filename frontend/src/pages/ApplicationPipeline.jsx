@@ -10,7 +10,7 @@ export default function ApplicationPipeline() {
   const theme = useTheme();
   const isDark = theme.palette.mode === 'dark';
   const { data: jobsData } = useMyJobs({ status: 'active', limit: 50 });
-  const jobs = jobsData?.data || [];
+  const jobs = jobsData?.jobs || [];
 
   const [selectedJobId, setSelectedJobId] = useState('');
   const { data: applications, isLoading, refetch } = useJobApplications(selectedJobId);

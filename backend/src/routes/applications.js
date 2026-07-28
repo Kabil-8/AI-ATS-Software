@@ -1,27 +1,29 @@
 const express = require('express');
 const router = express.Router();
-const {
-  createApplication, getMyApplications, getJobApplications,
-  getApplication, updateStatus, addNote,
-} = require('../controllers/applicationController');
+const applicationController = require('../controllers/applicationController');
 const { protect, requireRole } = require('../middleware/auth');
-const { upload, uploadMemory } = require('../middleware/upload');
 
-// Use S3 upload in production, memory in dev (if S3 not configured)
-const resumeUpload = process.env.AWS_ACCESS_KEY_ID && process.env.AWS_ACCESS_KEY_ID !== 'your_aws_access_key_id'
-  ? upload.single('resume')
-  : uploadMemory.single('resume');
+router.use(protect);
 
-// Applicant routes
-router.post('/', protect, requireRole('applicant'), resumeUpload, createApplication);
-router.get('/my', protect, requireRole('applicant'), getMyApplications);
+// Submit Application
+router.post('/', requireRole('candidate', 'applicant'), applicationController.submitApplication);
 
-// Recruiter routes
-router.get('/job/:jobId', protect, requireRole('recruiter'), getJobApplications);
-router.patch('/:id/status', protect, requireRole('recruiter'), updateStatus);
-router.post('/:id/notes', protect, requireRole('recruiter'), addNote);
+// My Applications (supported for both /my and /my-applications)
+router.get('/my-applications', requireRole('candidate', 'applicant'), applicationController.getMyApplications);
+router.get('/my', requireRole('candidate', 'applicant'), applicationController.getMyApplications);
 
-// Shared
-router.get('/:id', protect, getApplication);
+// Recruiter / Interviewer Job Applications
+router.get('/job/:jobId', requireRole('recruiter', 'company_admin', 'interviewer'), applicationController.getJobApplications);
+
+// Application Detail
+router.get('/:id', applicationController.getApplicationById);
+
+// Stage / Status Updates (supported for /stage and /status with PUT or PATCH)
+router.put('/:id/stage', requireRole('recruiter', 'company_admin'), applicationController.updateApplicationStage);
+router.patch('/:id/status', requireRole('recruiter', 'company_admin'), applicationController.updateApplicationStage);
+router.put('/:id/status', requireRole('recruiter', 'company_admin'), applicationController.updateApplicationStage);
+
+// Recruiter / Interviewer Notes
+router.post('/:id/notes', requireRole('recruiter', 'company_admin', 'interviewer'), applicationController.addNote);
 
 module.exports = router;

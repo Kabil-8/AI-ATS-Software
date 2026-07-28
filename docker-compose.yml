@@ -1,72 +1,59 @@
 version: '3.8'
 
 services:
-  # ── MongoDB ─────────────────────────────────────────────
-  mongo:
-    image: mongo:7
-    container_name: ats_mongo
-    restart: unless-stopped
+  mongodb:
+    image: mongo:7.0
+    container_name: talentai-mongodb
+    restart: always
     ports:
       - '27017:27017'
+    environment:
+      MONGO_INITDB_DATABASE: talentai_ats
     volumes:
       - mongo_data:/data/db
-    environment:
-      MONGO_INITDB_DATABASE: ai-ats
-    networks:
-      - ats_network
 
-  # ── Backend (Node.js / Express) ──────────────────────────
   backend:
     build:
       context: ./backend
       dockerfile: Dockerfile
-    container_name: ats_backend
-    restart: unless-stopped
+    container_name: talentai-backend
+    restart: always
     ports:
       - '5000:5000'
-    env_file:
-      - ./backend/.env
     environment:
-      - MONGO_URI=mongodb://mongo:27017/ai-ats
-      - AI_SERVICE_URL=http://ai-service:8000
-      - NODE_ENV=production
+      PORT: 5000
+      NODE_ENV: production
+      MONGO_URI: mongodb://mongodb:27017/talentai_ats
+      JWT_SECRET: talentai_enterprise_super_secret_jwt_2026
+      JWT_EXPIRES_IN: 7d
+      CLIENT_URL: http://localhost:5173
+      AI_SERVICE_URL: http://ai-service:8000
     depends_on:
-      - mongo
+      - mongodb
       - ai-service
-    networks:
-      - ats_network
 
-  # ── AI Microservice (Python / FastAPI) ───────────────────
   ai-service:
     build:
       context: ./ai-service
       dockerfile: Dockerfile
-    container_name: ats_ai_service
-    restart: unless-stopped
+    container_name: talentai-ai-service
+    restart: always
     ports:
       - '8000:8000'
-    env_file:
-      - ./ai-service/.env
-    networks:
-      - ats_network
+    environment:
+      PORT: 8000
+      BACKEND_URL: http://backend:5000
 
-  # ── Frontend (React / Vite) ──────────────────────────────
   frontend:
     build:
       context: ./frontend
       dockerfile: Dockerfile
-    container_name: ats_frontend
-    restart: unless-stopped
+    container_name: talentai-frontend
+    restart: always
     ports:
-      - '80:80'
+      - '5173:80'
     depends_on:
       - backend
-    networks:
-      - ats_network
 
 volumes:
   mongo_data:
-
-networks:
-  ats_network:
-    driver: bridge

@@ -11,52 +11,75 @@ const jobSchema = new mongoose.Schema(
     description: {
       type: String,
       required: [true, 'Job description is required'],
-      minlength: [50, 'Description must be at least 50 characters'],
+      minlength: [30, 'Description must be at least 30 characters'],
     },
-    requirements: [{ type: String, trim: true }],
-    skills: [{ type: String, trim: true, lowercase: true }],
+    responsibilities: [{ type: String, trim: true }],
+    requiredSkills: [{ type: String, trim: true, lowercase: true }],
+    preferredSkills: [{ type: String, trim: true, lowercase: true }],
     department: {
       type: String,
       required: [true, 'Department is required'],
       trim: true,
     },
     location: { type: String, trim: true, default: 'Remote' },
-    type: {
+    workplaceType: {
+      type: String,
+      enum: ['remote', 'hybrid', 'on-site'],
+      default: 'remote',
+    },
+    employmentType: {
       type: String,
       enum: ['full-time', 'part-time', 'contract', 'remote', 'internship'],
-      required: [true, 'Job type is required'],
+      default: 'full-time',
     },
     experienceLevel: {
       type: String,
-      enum: ['entry', 'mid', 'senior', 'lead', 'manager'],
-      required: true,
+      enum: ['entry', 'mid', 'senior', 'lead', 'manager', 'executive'],
+      default: 'mid',
     },
-    salary: {
-      min: { type: Number },
-      max: { type: Number },
+    educationLevel: {
+      type: String,
+      enum: ["Bachelor's", "Master's", "Ph.D.", "High School", "Any"],
+      default: "Bachelor's",
+    },
+    salaryRange: {
+      min: { type: Number, default: 0 },
+      max: { type: Number, default: 0 },
       currency: { type: String, default: 'USD' },
+      period: { type: String, enum: ['yearly', 'monthly', 'hourly'], default: 'yearly' },
       isVisible: { type: Boolean, default: true },
     },
+    company: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'Company',
+    },
+    recruiter: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'User',
+      required: true,
+    },
+    hiringTeam: [
+      {
+        user: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+        role: { type: String, enum: ['interviewer', 'reviewer', 'hiring_manager'] },
+      },
+    ],
     status: {
       type: String,
       enum: ['draft', 'active', 'archived', 'closed'],
       default: 'active',
     },
-    postedBy: {
-      type: mongoose.Schema.Types.ObjectId,
-      ref: 'User',
-      required: true,
-    },
+    isTemplate: { type: Boolean, default: false },
+    templateName: { type: String },
     applicationCount: { type: Number, default: 0 },
     views: { type: Number, default: 0 },
     isFeatured: { type: Boolean, default: false },
-    closingDate: { type: Date },
+    deadline: { type: Date },
   },
   { timestamps: true }
 );
 
-// Text search index
-jobSchema.index({ title: 'text', description: 'text', skills: 'text', department: 'text' });
-jobSchema.index({ status: 1, createdAt: -1 });
+jobSchema.index({ title: 'text', description: 'text', requiredSkills: 'text', department: 'text' });
+jobSchema.index({ company: 1, status: 1, createdAt: -1 });
 
 module.exports = mongoose.model('Job', jobSchema);
