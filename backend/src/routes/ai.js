@@ -10,3 +10,8 @@ router.post('/analyze-batch/:jobId', analyzeBatch);
 router.get('/status/:applicationId', getAnalysisStatus);
 
 module.exports = router;
+// router.post('/analyze/:applicationId', analyzeApplication);
+// router.post('/analyze-batch/:jobId', analyzeBatch);
+// router.get('/status/:applicationId', getAnalysisStatus);
+
+// module.exports = router;
